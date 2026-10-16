@@ -1,0 +1,17 @@
+// Bybit V5 official symbolType: stock/ETF/forex/commodity/xstocks/mstocks are non-crypto.
+export const UNIVERSE_VERSION='bybit-usdt-crypto-v2';
+const NON_CRYPTO=/stock|etf|forex|commodity|equity|index|indices|tradfi|metal|oil/i;
+export function isCryptoInstrument(i,exchange){
+ if(exchange!=='bybit')return false;
+ if(!i||typeof (i.symbol||i.instId)!=='string')return false;
+ const classes=[i.symbolType,i.underlyingType,i.assetType,i.assetClass,i.instrumentType,...(i.underlyingSubType||[])].filter(v=>typeof v==='string');
+ if(classes.some(v=>NON_CRYPTO.test(v)))return false;
+ if(i.marketRegion||i.underlyingTicker)return false;
+ if(exchange==='bybit')return i.status==='Trading'&&i.contractType==='LinearPerpetual'&&i.quoteCoin==='USDT'&&i.settleCoin==='USDT'&&['','innovation'].includes(i.symbolType||'');
+ if(exchange==='binance')return i.status==='TRADING'&&i.contractType==='PERPETUAL'&&i.quoteAsset==='USDT'&&i.marginAsset==='USDT'&&i.underlyingType==='COIN';
+ if(exchange==='okx')return i.state==='live'&&i.instType==='SWAP'&&i.settleCcy==='USDT';
+ return false;
+}
+async function payload(request,url,exchange){const r=await request(url,{timeout:15000,exchange});if(!r.ok||!r.text)throw Error('Kripto ürün bilgisi alınamadı / crypto instrument metadata unavailable');let d;try{d=JSON.parse(r.text)}catch{throw Error('Geçersiz ürün bilgisi / invalid instrument metadata');}if(exchange==='bybit'&&String(d.retCode)!=='0'||exchange==='okx'&&String(d.code)!=='0')throw Error(d.retMsg||d.msg||'Instrument metadata error');return d;}
+export async function cryptoInstrumentMap(request,exchange){if(exchange!=='bybit')throw Error('Only Bybit USDT crypto is supported');const result=new Map();if(exchange==='bybit'){let cursor='',seen=new Set();do{const u='https://api.bybit.com/v5/market/instruments-info?category=linear&status=Trading&limit=1000'+(cursor?'&cursor='+encodeURIComponent(cursor):'');const d=await payload(request,u,exchange);if(!Array.isArray(d.result?.list))throw Error('Missing instrument list');for(const i of d.result.list)if(isCryptoInstrument(i,exchange))result.set(i.symbol,i);cursor=d.result.nextPageCursor||'';if(cursor&&seen.has(cursor))throw Error('Repeated instrument cursor');seen.add(cursor);}while(cursor);}else if(exchange==='binance'){const d=await payload(request,'https://fapi.binance.com/fapi/v1/exchangeInfo',exchange);if(!Array.isArray(d.symbols))throw Error('Missing instrument list');for(const i of d.symbols)if(isCryptoInstrument(i,exchange))result.set(i.symbol,i);}else if(exchange==='okx'){const d=await payload(request,'https://www.okx.com/api/v5/public/instruments?instType=SWAP',exchange);if(!Array.isArray(d.data))throw Error('Missing instrument list');for(const i of d.data)if(isCryptoInstrument(i,exchange))result.set(i.instId,i);}else throw Error('Unknown exchange');if(!result.size)throw Error('Kripto ürün listesi boş / empty crypto universe');return result;}
+export async function filterCryptoUniverse(symbols,request){const metadata=await cryptoInstrumentMap(request,'bybit'),tickers=new Map(symbols.filter(s=>s.exchange==='bybit').map(s=>[s.symbol,s]));return [...metadata].map(([symbol,i])=>({...tickers.get(symbol),symbol,baseCoin:i.baseCoin||symbol.replace(/USDT$/,''),exchange:'bybit',lastPrice:tickers.get(symbol)?.lastPrice||0,change24h:tickers.get(symbol)?.change24h||0,volume24hUsd:tickers.get(symbol)?.volume24hUsd||0,assetClass:'crypto',universeVersion:UNIVERSE_VERSION}));}

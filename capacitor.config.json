@@ -1,0 +1,21 @@
+{
+  "appId": "com.tradingly.two",
+  "appName": "TRADINGLY 2",
+  "webDir": "dist",
+  "ios": {
+    "contentInset": "never",
+    "scheme": "TRADINGLY",
+    "backgroundColor": "#020617"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#7ba4dc",
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "banner",
+        "list"
+      ]
+    }
+  }
+}

@@ -1,0 +1,49 @@
+name: iOS IPA (unsigned)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "**" ]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install & sync Capacitor
+        run: |
+          npm ci
+          npm run sync
+
+      - name: Build (no code signing)
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package IPA
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          cd out && zip -qry TRADINGLY-2-BYBIT-iOS-v1.80-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TRADINGLY-2-BYBIT-iOS-v1.80-unsigned
+          path: out/TRADINGLY-2-BYBIT-iOS-v1.80-unsigned.ipa
