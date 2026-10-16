@@ -5,6 +5,13 @@ on:
   push:
     branches: [ "**" ]
 
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-15
@@ -34,7 +41,12 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build
+            build 2>&1 | tee build.log | grep -E 'error:|warning: .*Tradingly|BUILD (SUCCEEDED|FAILED)' || true
+          if ! grep -q 'BUILD SUCCEEDED' build.log; then
+            grep -E '(error|fatal error):' build.log | sort -u | head -40 | while read -r line; do echo "::error::$line"; done
+            tail -60 build.log | while read -r line; do echo "::warning::$line"; done
+            exit 1
+          fi
 
       - name: Package IPA
         run: |
@@ -47,3 +59,11 @@ jobs:
         with:
           name: TRADINGLY-2-BYBIT-iOS-v1.80-unsigned
           path: out/TRADINGLY-2-BYBIT-iOS-v1.80-unsigned.ipa
+
+      - name: Publish release (public download link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tradingly-ios-v1.80-build${{ github.run_number }}
+          name: TRADINGLY 2 BYBİT iOS v1.80 (build ${{ github.run_number }})
+          prerelease: true
+          files: out/TRADINGLY-2-BYBIT-iOS-v1.80-unsigned.ipa
